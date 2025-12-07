@@ -7,7 +7,7 @@ from elasticsearch import Elasticsearch
 from neo4j import GraphDatabase, Driver
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
-from sentence_transformers import SentenceTransformer
+from .embeddings import Embeddings
 
 from .config import load_settings
 
@@ -17,7 +17,7 @@ class Clients:
     es: Elasticsearch
     qd: QdrantClient
     neo: Driver
-    model: SentenceTransformer
+    model: Embeddings
     es_index: str
     qd_collection: str
 
@@ -27,7 +27,12 @@ def bootstrap_clients() -> Clients:
     es = Elasticsearch(cfg.elastic_url)
     qd = QdrantClient(url=cfg.qdrant_url)
     neo = GraphDatabase.driver(cfg.neo4j_url, auth=(cfg.neo4j_user, cfg.neo4j_password))
-    model = SentenceTransformer(cfg.embedding_model)
+    model = Embeddings(
+        cfg.embedding_model,
+        hf_token=cfg.hf_token,
+        local_files_only=cfg.hf_local_files_only,
+        force_backend=cfg.emb_force_backend,
+    )
     return Clients(
         es=es,
         qd=qd,
@@ -61,7 +66,7 @@ def search_semantic_qdrant(
     limit: int = 5,
     filter_doc_ids: Optional[List[str]] = None,
 ):
-    vec = cli.model.encode([query], normalize_embeddings=True)[0].tolist()
+    vec = cli.model.encode([query])[0]
     qfilter = None
     if filter_doc_ids:
         qfilter = qm.Filter(must=[qm.FieldCondition(key="doc_id", match=qm.MatchAny(any=filter_doc_ids))])

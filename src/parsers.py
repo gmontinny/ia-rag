@@ -12,8 +12,26 @@ INCISO_RE = re.compile(r"\b([IVXLCDM]+)\s*[-–]\s", re.IGNORECASE)
 
 
 def _read_html(path: str) -> str:
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        html = f.read()
+    # Tenta múltiplos encodings comuns em documentos brasileiros
+    encodings = ["utf-8", "latin-1", "iso-8859-1", "cp1252", "windows-1252"]
+    html = None
+    
+    for enc in encodings:
+        try:
+            with open(path, "r", encoding=enc) as f:
+                html = f.read()
+            # Verifica se tem caracteres estranhos (indica encoding errado)
+            if "Ã" not in html or enc == encodings[-1]:
+                break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    
+    if html is None:
+        # Fallback: lê como bytes e tenta detectar
+        with open(path, "rb") as f:
+            raw = f.read()
+        html = raw.decode("utf-8", errors="replace")
+    
     soup = BeautifulSoup(html, "lxml")
     # Remove scripts/styles
     for t in soup(["script", "style"]):

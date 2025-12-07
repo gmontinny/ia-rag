@@ -21,15 +21,32 @@ def main():
         return
 
     # Initialize components
-    emb = Embeddings(cfg.embedding_model)
-    es = ElasticsearchStore(cfg.elastic_url, cfg.elastic_index)
+    print("[Ingest] Inicializando embeddings...")
+    emb = Embeddings(
+        cfg.embedding_model,
+        hf_token=cfg.hf_token,
+        local_files_only=cfg.hf_local_files_only,
+        force_backend=cfg.emb_force_backend,
+    )
+    print("[Ingest] Inicializando ElasticsearchStore e garantindo índice...")
+    es = ElasticsearchStore(cfg.elastic_url, cfg.elastic_index, timeout=cfg.es_timeout)
     es.ensure_index()
-    qd = QdrantStore(cfg.qdrant_url, cfg.qdrant_collection, emb.dim)
+    print("[Ingest] Inicializando QdrantStore e garantindo coleção...")
+    qd = QdrantStore(
+        cfg.qdrant_url,
+        cfg.qdrant_collection,
+        emb.dim,
+        upsert_batch=cfg.qdrant_upsert_batch,
+        timeout=cfg.qdrant_timeout,
+        retries=cfg.qdrant_retries,
+    )
     qd.ensure_collection()
-    neo = Neo4jStore(cfg.neo4j_url, cfg.neo4j_user, cfg.neo4j_password)
+    print("[Ingest] Inicializando Neo4jStore e garantindo schema...")
+    neo = Neo4jStore(cfg.neo4j_url, cfg.neo4j_user, cfg.neo4j_password, timeout=cfg.neo4j_timeout)
     neo.ensure_schema()
 
     # Index documents to Elasticsearch
+    print("[Ingest] Indexando documentos no Elasticsearch...")
     for d in docs:
         es.index_document(
             d.doc_id,
@@ -42,6 +59,7 @@ def main():
         )
 
     # Chunk, embed, and store chunks
+    print("[Ingest] Gerando chunks e populando Neo4j...")
     all_chunk_ids: List[str] = []
     all_texts: List[str] = []
     all_payloads: List[Dict] = []
@@ -71,14 +89,17 @@ def main():
             )
 
     if all_texts:
+        print(f"[Ingest] Gerando embeddings para {len(all_texts)} chunks...")
         vectors = emb.encode(all_texts, batch_size=64)
+        print("[Ingest] Upsert dos vetores no Qdrant (em lotes)...")
         qd.upsert(all_chunk_ids, vectors, all_payloads)
-        print(f"Vetores inseridos no Qdrant: {len(all_texts)} chunks.")
+        print(f"[Ingest] Vetores inseridos no Qdrant: {len(all_texts)} chunks.")
     else:
         print("Nenhum chunk gerado.")
 
+    print("[Ingest] Fechando conexão com Neo4j...")
     neo.close()
-    print("Ingestão concluída.")
+    print("[Ingest] Ingestão concluída.")
 
 
 if __name__ == "__main__":

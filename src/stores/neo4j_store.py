@@ -3,8 +3,13 @@ from neo4j import GraphDatabase
 
 
 class Neo4jStore:
-    def __init__(self, uri: str, user: str, password: str):
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+    def __init__(self, uri: str, user: str, password: str, timeout: float | None = None):
+        drv_kwargs = {"auth": (user, password)}
+        if timeout is not None:
+            # O driver v5 aceita connection_timeout em segundos
+            drv_kwargs["connection_timeout"] = float(timeout)
+        self.driver = GraphDatabase.driver(uri, **drv_kwargs)
+        self.timeout = float(timeout or 15)
 
     def close(self):
         self.driver.close()
@@ -26,6 +31,14 @@ class Neo4jStore:
             sess.execute_write(
                 lambda tx: tx.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE")
             )
+
+    def ping(self) -> bool:
+        try:
+            with self.driver.session() as s:
+                rec = s.run("RETURN 1 AS ok").single()
+                return bool(rec and rec["ok"] == 1)
+        except Exception:
+            return False
 
     def upsert_hierarchy(self, law_id: str, article: Optional[str], paragraph: Optional[str], inciso: Optional[str]):
         with self.driver.session() as sess:

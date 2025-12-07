@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 from neo4j import GraphDatabase, Driver
@@ -11,6 +10,7 @@ from neo4j import GraphDatabase, Driver
 from .config import load_settings
 from .llm_providers import make_provider
 from .search import bootstrap_clients as bootstrap_search_clients
+from .embeddings import Embeddings
 
 
 @dataclass
@@ -31,10 +31,10 @@ def _retrieve_evidence(query: str, topk: int = 6, use_hybrid: bool = True, filte
     es = cli.es
     qd: QdrantClient = cli.qd
     neo: Driver = cli.neo
-    model: SentenceTransformer = cli.model
+    model: Embeddings = cli.model
 
     # 1) Vetor da consulta
-    qvec = model.encode([query], normalize_embeddings=True)[0].tolist()
+    qvec = model.encode([query])[0]
 
     # 2) Construir filtro do Qdrant (ES candidatos + law_id opcional)
     must_conditions: List[qm.Condition] = []
